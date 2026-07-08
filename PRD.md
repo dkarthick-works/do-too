@@ -161,7 +161,7 @@ Two cross-cutting conventions:
 | Concern | Choice |
 |---|---|
 | Framework | Flutter |
-| Design system | Material 3 (custom seed color, light + dark themes) |
+| Design system | Material 3 (seed color `#4F46E5` Deep Indigo, light + dark themes) |
 | State management | Riverpod |
 | Routing | go_router |
 | Local database | Drift (typed SQLite with migrations) |
@@ -174,8 +174,10 @@ notification action buttons — and running a second plugin alongside it (such a
 `awesome_notifications`) causes conflicts, since each registers its own Android receivers
 and iOS delegate.
 
-**Design system notes.** The UI is Material 3 throughout, themed from a custom seed color
-with light and dark modes. Small adaptive touches are used where platform feel matters most:
+**Design system notes.** The UI is Material 3 throughout, themed from seed color `#4F46E5`
+(Deep Indigo) via `ColorScheme.fromSeed`, with light and dark modes. Deep Indigo was chosen
+for its calm, focused feel and its strong visual separation from the error-red used for
+overdue styling. Small adaptive touches are used where platform feel matters most:
 `showAdaptiveDialog` for the recurring-delete scope dialog, adaptive switches, and iOS-style
 date/time pickers on iOS. Component mapping for the PRD's key elements:
 
