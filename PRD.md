@@ -148,11 +148,23 @@ Two cross-cutting conventions:
 | Concern | Choice |
 |---|---|
 | Framework | Flutter |
+| Design system | Material 3 (custom seed color, light + dark themes) |
 | State management | Riverpod |
 | Routing | go_router |
 | Local database | Drift (typed SQLite with migrations) |
 | Notifications | `flutter_local_notifications` + `awesome_notifications` + `timezone` |
 | Recurrence | `rrule` package |
+
+**Design system notes.** The UI is Material 3 throughout, themed from a custom seed color
+with light and dark modes. Small adaptive touches are used where platform feel matters most:
+`showAdaptiveDialog` for the recurring-delete scope dialog, adaptive switches, and iOS-style
+date/time pickers on iOS. Component mapping for the PRD's key elements:
+
+- Reminder preset chips (5m / 30m / 1h / 1d) → Material chips.
+- Day ⇄ 3-day toggle → `SegmentedButton`.
+- Collapsed Completed section → `ExpansionTile`.
+- New-task entry → FAB.
+- Overdue rollover styling → the theme `ColorScheme` error color.
 
 Proposed project structure (feature-first):
 
