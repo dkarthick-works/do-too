@@ -67,7 +67,9 @@ attachments.
   completed state, so a daily task can be done on Monday and missed on Tuesday.
 - **Edits apply to this and future occurrences only.** An edit splits the series: the
   existing task's rule is capped with an UNTIL date, and a new task (linked via `series_id`)
-  carries the updated fields and rule forward. Past occurrences keep their original values.
+  carries the updated fields and rule forward. The new segment copies the subtasks (reset to
+  unchecked) and reminders from the original; per-occurrence state stays with the old
+  segment. Past occurrences keep their original values.
 - **Deletes ask for scope.** Deleting a recurring task prompts: this occurrence (recorded as
   a skip), this and future (UNTIL cap), or all occurrences (soft-delete of the series).
 
@@ -82,7 +84,8 @@ attachments.
 
 - **One-off tasks automatically roll over to Today** when left incomplete, and are shown in
   red. This is a display-time rule only — the task's original date is preserved in the
-  database.
+  database. Rolling over does **not** re-fire past reminders: reminders fire once at their
+  scheduled time, and snoozing is the mechanism for re-nagging.
 - **Recurring occurrences never roll over.** A missed occurrence stays in the past, marked
   as missed. Only one-off tasks roll forward.
 
@@ -104,10 +107,15 @@ attachments.
 - A task can have multiple reminders. Each is either an offset from the due time (0 meaning
   "at due time") or an absolute time, and each can be enabled or disabled individually.
 - Notifications carry two **actions**:
-  - **Done** — marks the occurrence complete and cancels its remaining reminders.
-  - **Snooze** — opens a **picker** (for example: 10 minutes, 1 hour, tonight, tomorrow)
-    and reschedules that single firing. There is no per-task snooze default; the user
-    chooses each time.
+  - **Done** — marks the occurrence complete and cancels its remaining reminders. This is a
+    true background action: it completes directly from the notification without launching
+    the app.
+  - **Snooze** — notification action buttons cannot show an inline picker, so tapping
+    Snooze opens the app onto a **snooze bottom sheet** (10 minutes, 1 hour, tonight,
+    tomorrow, or a custom time) and reschedules that single firing. In v1, **tonight means
+    8:00 PM today** and **tomorrow means 9:00 AM the next day** — these are hardcoded until
+    the v2 settings screen makes them configurable. There is no per-task snooze default;
+    the user chooses each time.
 - An optional **full-screen alarm** style is available for critical reminders.
 - Creating or editing a task cancels and reschedules all of its enabled reminders within the
   scheduling window.
@@ -120,19 +128,24 @@ attachments.
   Huawei) aggressively kill background alarms.
 - **iOS.** Only local notifications are available, via `UNUserNotificationCenter`, and iOS
   caps pending notifications at **64**. The app therefore schedules a rolling window of the
-  next N occurrences and tops the window up on every app open and every task edit. There is
-  no dynamic background rescheduling on iOS.
+  **soonest ~50 reminder firings across all tasks** (soonest-first, leaving headroom for
+  snoozes and immediate notifications) and tops the window up on every app open and every
+  task edit. There is no dynamic background rescheduling on iOS.
 
 ## 6. Data model (SQLite, v1)
 
-- **`tasks`** — id (UUID), title, description, due_date, due_time (nullable = untimed),
+- **`tasks`** — id (UUID), title, description, due_date, due_time (nullable = untimed; for
+  recurring tasks, due_date and due_time act as the RRULE's DTSTART),
   recurrence_rule (nullable RRULE string, including UNTIL/COUNT), series_id (nullable; links
   the segments of a split series), completed (used for one-offs only), created_at,
   updated_at, deleted_at (soft delete), owner_id (nullable; reserved for future multi-user).
 - **`subtasks`** — id, task_id (FK), title, completed, position.
 - **`occurrences`** — id, task_id (FK), occurrence_date, completed, skipped (set when a
   single occurrence is deleted). This table materializes per-instance state for recurring
-  tasks.
+  tasks, and rows are created **lazily** — only when an occurrence is completed, skipped,
+  or snoozed. Display and reminder scheduling expand the RRULE on the fly; an absent row
+  simply means the default state (incomplete). This keeps the table from growing
+  unboundedly for never-ending rules.
 - **`reminders`** — id, task_id (FK), offset_minutes (0 = at due time) or an absolute
   fire_at, enabled.
 
@@ -152,8 +165,14 @@ Two cross-cutting conventions:
 | State management | Riverpod |
 | Routing | go_router |
 | Local database | Drift (typed SQLite with migrations) |
-| Notifications | `flutter_local_notifications` + `awesome_notifications` + `timezone` |
+| Notifications | `flutter_local_notifications` + `timezone` |
 | Recurrence | `rrule` package |
+
+A single notification plugin is used deliberately: `flutter_local_notifications` covers
+everything the PRD needs — exact alarms (`exactAllowWhileIdle`), full-screen intents, and
+notification action buttons — and running a second plugin alongside it (such as
+`awesome_notifications`) causes conflicts, since each registers its own Android receivers
+and iOS delegate.
 
 **Design system notes.** The UI is Material 3 throughout, themed from a custom seed color
 with light and dark modes. Small adaptive touches are used where platform feel matters most:
@@ -188,7 +207,8 @@ lib/
 4. Recurrence: RRULE input UI, occurrence expansion, per-occurrence completion, series-split
    editing, and this/future/all deletion.
 5. Notifications: windowed scheduling and cancellation, exact alarms, permission flows, the
-   Done and Snooze-picker actions, and the full-screen alarm option.
+   background Done action, the Snooze action with its in-app snooze sheet, and the
+   full-screen alarm option.
 6. Polish: empty states, floating-timezone correctness, and an OEM battery-optimization
    guidance screen.
 
@@ -202,8 +222,9 @@ lib/
 
 ## 10. Acceptance criteria (v1)
 
-- A one-off task with a near-term reminder fires on time, and the Done and Snooze-picker
-  actions work directly from the notification.
+- A one-off task with a near-term reminder fires on time; **Done** completes the task
+  directly from the notification without opening the app, and **Snooze** opens the in-app
+  snooze sheet and reschedules the firing to the chosen time.
 - A daily recurring task renders distinct occurrences across the Day and 3-day views;
   occurrences complete independently; editing splits the series while leaving the past
   unchanged; deletion honors the this/future/all choice.
