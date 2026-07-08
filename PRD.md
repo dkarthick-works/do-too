@@ -1,127 +1,160 @@
-# PRD — do-too
+# Product Requirements Document — do-too
 
 A calendar-centric, reminder-heavy to-do application for iOS and Android.
 
 ## 1. Overview
 
-do-too is a mobile to-do app whose core differentiators are **calendar-centric browsing**
-(the app opens on today's tasks, not an undifferentiated list) and **heavy, reliable
-reminders/notifications** (multiple reminders per task, snooze, actionable notifications,
-alarm-style delivery).
+do-too is a mobile to-do application built around two core differentiators:
 
-- **Platforms**: iOS + Android, single codebase (**Flutter**).
-- **Users**: single-user in v1. Data model is designed so multi-user accounts, task
-  assignment, and sharing can be added later without migration pain.
-- **Data**: local-first. All data in on-device SQLite in v1. Cloud sync to a self-hosted
-  Postgres database comes later, behind an abstract sync/repository layer — v1 code has no
-  backend coupling.
+1. **Calendar-centric browsing.** The app opens directly onto today's tasks rather than an
+   undifferentiated list, and the primary way of navigating tasks is by day.
+2. **Heavy, reliable reminders and notifications.** Tasks support multiple reminders,
+   snoozing, actionable notification buttons, and alarm-style delivery — and the app is
+   engineered around the platform constraints that normally make mobile reminders flaky.
+
+**Platforms.** iOS and Android from a single codebase, built with **Flutter**.
+
+**Users.** Version 1 is single-user. However, the data model is designed so that multi-user
+accounts, task assignment, and sharing can be added later without painful migrations.
+
+**Data.** The app is local-first. In version 1, all data lives in an on-device SQLite
+database. Cloud synchronization to a self-hosted Postgres database will come later, behind
+an abstract sync/repository layer — version 1 code has no backend coupling of any kind.
 
 ## 2. Screens (v1)
 
 ### 2.1 Home / Calendar list
-- App launches on **Today** (Day view).
-- Toggle between **Day** and rolling **3-day** view. (Week/Month deferred to v2.)
-- Each day section shows, in order:
-  1. **Overdue** rolled-over one-off tasks, marked red (Today only — see §4.3).
-  2. Tasks sorted by time; untimed tasks grouped at the top.
-  3. Collapsed **Completed** section at the bottom.
-- Each task row: completion checkbox, title, time (if set), subtask progress indicator
-  (e.g. 2/5).
-- Tap a task → detail/edit screen.
+
+- The app launches on **Today** (the Day view).
+- The user can toggle between the **Day** view and a rolling **3-day** view. Week and Month
+  views are deferred to version 2.
+- Each day section is laid out in the following order:
+  1. **Overdue** one-off tasks that have rolled over, highlighted in red (shown on Today
+     only — see §4.3 for the rollover rule).
+  2. The day's tasks sorted by time, with untimed tasks grouped at the top.
+  3. A collapsed **Completed** section at the bottom.
+- Each task row shows a completion checkbox, the title, the time (if one is set), and a
+  subtask progress indicator (for example, "2/5").
+- Tapping a task opens the detail/edit screen.
 
 ### 2.2 Create / Edit task
-- **Title** (required), **description**.
-- **Date** (required — undated tasks are not allowed), **time** (optional; untimed tasks
-  group at top of the day).
-- **Subtasks**: add / check / reorder / delete.
-- **Recurrence**: frequency (daily / weekly / monthly / custom RRULE), interval, end
-  condition (forever / until date / N times).
-- **Reminders**: notification toggle. ON creates one reminder **at due time** by default;
-  preset chips add more (5 min / 30 min / 1 hr / 1 day before) plus custom offset/time.
-  Multiple reminders per task.
-- **Delete**: one-off deletes directly; recurring prompts a dialog — **this / this and
-  future / all occurrences**.
+
+- **Title** (required) and **description**.
+- **Date** (required — undated tasks are not allowed) and **time** (optional; untimed tasks
+  are grouped at the top of their day).
+- **Subtasks**: the user can add, check off, reorder, and delete them.
+- **Recurrence**: frequency (daily, weekly, monthly, or a custom RRULE), an interval, and an
+  end condition (forever, until a date, or after N occurrences).
+- **Reminders**: a notification toggle. Turning it on creates one reminder **at the due
+  time** by default; preset chips add more (5 minutes, 30 minutes, 1 hour, or 1 day before),
+  plus a custom offset or absolute time. A task can have any number of reminders.
+- **Delete**: a one-off task deletes directly. Deleting a recurring task prompts a dialog
+  asking for scope — **this occurrence / this and future occurrences / all occurrences**.
 
 ## 3. Task model (v1 — deliberately minimal)
 
-Title, description, date, time, subtasks, reminders, recurrence. **No** priority, tags,
-lists/projects, or attachments in v1.
+A task consists of a title, description, date, time, subtasks, reminders, and a recurrence
+rule. Version 1 intentionally excludes priority levels, tags, lists/projects, and
+attachments.
 
 ## 4. Behavior rules
 
 ### 4.1 Recurrence
-- Full RRULE support: daily / weekly / monthly / custom; end = forever, until date, or count.
-- **Per-occurrence completion**: each occurrence of a recurring task has its own completed
-  state.
-- **Editing a recurring task applies to this + future occurrences only.** The edit splits the
-  series: the old task's rule is capped with UNTIL, and a new task (linked by `series_id`)
-  carries the new fields/rule forward. Past occurrences keep their old values.
-- **Deleting a recurring task asks scope**: this occurrence (skip flag) / this and future
-  (UNTIL cap) / all (soft-delete series).
+
+- Full RRULE support: daily, weekly, monthly, and custom rules, ending either never, at a
+  date, or after a count of occurrences.
+- **Per-occurrence completion.** Each occurrence of a recurring task carries its own
+  completed state, so a daily task can be done on Monday and missed on Tuesday.
+- **Edits apply to this and future occurrences only.** An edit splits the series: the
+  existing task's rule is capped with an UNTIL date, and a new task (linked via `series_id`)
+  carries the updated fields and rule forward. Past occurrences keep their original values.
+- **Deletes ask for scope.** Deleting a recurring task prompts: this occurrence (recorded as
+  a skip), this and future (UNTIL cap), or all occurrences (soft-delete of the series).
 
 ### 4.2 Subtasks
-- Plain checklist: title + checkbox + position. No dates or reminders on subtasks.
-- Parent task is completed **manually** — completing all subtasks does not auto-complete it.
+
+- Subtasks are a plain checklist: a title, a checkbox, and a position. They do not have
+  their own dates or reminders.
+- The parent task is completed **manually** — checking off every subtask does not
+  auto-complete the parent.
 
 ### 4.3 Overdue
-- **One-off tasks auto-roll over to Today** when incomplete, displayed in red. This is a
-  display-time rule — the original date is preserved in the database.
-- **Recurring occurrences never roll over.** A missed occurrence stays in the past as missed.
 
-### 4.4 Completed
-- Completed tasks move to a collapsed "Completed" section at the bottom of their day.
+- **One-off tasks automatically roll over to Today** when left incomplete, and are shown in
+  red. This is a display-time rule only — the task's original date is preserved in the
+  database.
+- **Recurring occurrences never roll over.** A missed occurrence stays in the past, marked
+  as missed. Only one-off tasks roll forward.
+
+### 4.4 Completed tasks
+
+- When a task is completed, it moves into a collapsed "Completed" section at the bottom of
+  its day.
 
 ### 4.5 Timezone
-- **Floating local time.** A 9:00 AM task fires at 9:00 AM in whatever timezone the user is
-  in. All datetimes are stored as local wall-clock values, not UTC instants.
+
+- Times are **floating local time**. A task set for 9:00 AM fires at 9:00 AM in whatever
+  timezone the user happens to be in. All datetimes are stored as local wall-clock values,
+  never as UTC instants.
 
 ## 5. Notifications (core feature)
 
 ### 5.1 Behavior
-- Multiple reminders per task; each is an offset from due time (0 = at due time) or an
-  absolute time; individually enable/disable.
-- Notification **actions**:
-  - **Done** — marks the occurrence complete and cancels its remaining reminders.
-  - **Snooze** — opens a **picker** (e.g. 10 min / 1 hr / tonight / tomorrow) and
-    reschedules that single fire. No per-task snooze default.
-- Optional **full-screen alarm** style for critical reminders.
-- Task create/edit cancels and reschedules all enabled reminders for the scheduling window.
 
-### 5.2 OS constraints
-- **Android 12+**: request `SCHEDULE_EXACT_ALARM`; use exact alarms. Full-screen intent
-  permission for alarm-style. Guide users to disable battery optimization (Xiaomi / Samsung /
-  Huawei aggressively kill background alarms).
-- **iOS**: local notifications only via `UNUserNotificationCenter`; **64
-  pending-notification cap** → schedule a rolling window of the next N occurrences and
-  re-top-up on every app open and task edit. No dynamic background rescheduling.
+- A task can have multiple reminders. Each is either an offset from the due time (0 meaning
+  "at due time") or an absolute time, and each can be enabled or disabled individually.
+- Notifications carry two **actions**:
+  - **Done** — marks the occurrence complete and cancels its remaining reminders.
+  - **Snooze** — opens a **picker** (for example: 10 minutes, 1 hour, tonight, tomorrow)
+    and reschedules that single firing. There is no per-task snooze default; the user
+    chooses each time.
+- An optional **full-screen alarm** style is available for critical reminders.
+- Creating or editing a task cancels and reschedules all of its enabled reminders within the
+  scheduling window.
+
+### 5.2 Platform constraints
+
+- **Android 12+.** The app requests the `SCHEDULE_EXACT_ALARM` permission and uses exact
+  alarms for reminders, plus the full-screen intent permission for alarm-style delivery. The
+  app guides users to disable battery optimization, since OEM skins (Xiaomi, Samsung,
+  Huawei) aggressively kill background alarms.
+- **iOS.** Only local notifications are available, via `UNUserNotificationCenter`, and iOS
+  caps pending notifications at **64**. The app therefore schedules a rolling window of the
+  next N occurrences and tops the window up on every app open and every task edit. There is
+  no dynamic background rescheduling on iOS.
 
 ## 6. Data model (SQLite, v1)
 
-- `tasks`: id (UUID), title, description, due_date, due_time (nullable = untimed),
-  recurrence_rule (nullable RRULE string incl. UNTIL/COUNT), series_id (nullable — links
-  split-off series segments), completed (one-offs only), created_at, updated_at, deleted_at
-  (soft delete), owner_id (nullable — future multi-user).
-- `subtasks`: id, task_id (FK), title, completed, position.
-- `occurrences`: id, task_id (FK), occurrence_date, completed, skipped (single-occurrence
-  delete) — materialized per-instance state for recurring tasks.
-- `reminders`: id, task_id (FK), offset_minutes (0 = at due time) or absolute fire_at,
-  enabled.
-- All datetimes stored as local wall-clock (floating).
-- All tables carry `updated_at` + `deleted_at` → ready for future Postgres last-write-wins
-  sync.
+- **`tasks`** — id (UUID), title, description, due_date, due_time (nullable = untimed),
+  recurrence_rule (nullable RRULE string, including UNTIL/COUNT), series_id (nullable; links
+  the segments of a split series), completed (used for one-offs only), created_at,
+  updated_at, deleted_at (soft delete), owner_id (nullable; reserved for future multi-user).
+- **`subtasks`** — id, task_id (FK), title, completed, position.
+- **`occurrences`** — id, task_id (FK), occurrence_date, completed, skipped (set when a
+  single occurrence is deleted). This table materializes per-instance state for recurring
+  tasks.
+- **`reminders`** — id, task_id (FK), offset_minutes (0 = at due time) or an absolute
+  fire_at, enabled.
 
-## 7. Tech choices
+Two cross-cutting conventions:
+
+- All datetimes are stored as local wall-clock values (floating), per the timezone rule in
+  §4.5.
+- Every table carries `updated_at` and `deleted_at`, so a future last-write-wins sync to
+  Postgres can be layered on without schema changes.
+
+## 7. Technology choices
 
 | Concern | Choice |
 |---|---|
 | Framework | Flutter |
-| State | Riverpod |
+| State management | Riverpod |
 | Routing | go_router |
-| Local DB | Drift (typed SQLite, migrations) |
+| Local database | Drift (typed SQLite with migrations) |
 | Notifications | `flutter_local_notifications` + `awesome_notifications` + `timezone` |
 | Recurrence | `rrule` package |
 
-Proposed structure (feature-first):
+Proposed project structure (feature-first):
 
 ```
 lib/
@@ -133,36 +166,40 @@ lib/
   shared/          # widgets, theme
 ```
 
-## 8. Build phases (post-PRD approval)
+## 8. Build phases (after PRD approval)
 
-1. Scaffold Flutter app; Riverpod + go_router + Drift schema/migrations.
-2. Task CRUD + subtasks.
-3. Calendar home: Day + 3-day, completion, overdue rollover rule, collapsed Completed section.
-4. Recurrence: RRULE UI, occurrence expansion, per-occurrence completion, series-split edit,
-   this/future/all delete.
-5. Notifications: windowed schedule/cancel, exact alarms, permissions, Done/Snooze-picker
-   actions, full-screen alarm option.
-6. Polish: empty states, timezone floating correctness, OEM battery guidance screen.
+1. Scaffold the Flutter app; wire up Riverpod, go_router, and the Drift schema with
+   migrations.
+2. Task CRUD and subtasks.
+3. Calendar home: Day and 3-day views, completion, the overdue rollover rule, and the
+   collapsed Completed section.
+4. Recurrence: RRULE input UI, occurrence expansion, per-occurrence completion, series-split
+   editing, and this/future/all deletion.
+5. Notifications: windowed scheduling and cancellation, exact alarms, permission flows, the
+   Done and Snooze-picker actions, and the full-screen alarm option.
+6. Polish: empty states, floating-timezone correctness, and an OEM battery-optimization
+   guidance screen.
 
 ## 9. Deferred to v2+
 
 - Week and Month calendar views.
-- Multi-user accounts, task assignment, sharing.
-- Cloud sync to self-hosted Postgres (built behind the repository interface from day 1).
-- Priority, tags, lists/projects, attachments.
-- Settings screen (snooze presets config, day-start hour, hide-completed toggle).
+- Multi-user accounts, task assignment, and sharing.
+- Cloud sync to self-hosted Postgres (kept behind the repository interface from day one).
+- Priority, tags, lists/projects, and attachments.
+- A settings screen (snooze preset configuration, day-start hour, hide-completed toggle).
 
 ## 10. Acceptance criteria (v1)
 
-- One-off task with near-term reminder fires on time; Done and Snooze-picker actions work
-  from the notification.
-- Daily recurring task renders distinct occurrences across Day/3-day; occurrences complete
-  independently; editing splits the series (past unchanged); delete honors
-  this/future/all.
-- Incomplete one-off from yesterday appears on Today in red; missed recurring occurrence
-  stays in the past.
-- Android: exact-alarm permission prompt appears; reminders survive on a physical OEM
-  device with battery optimization guidance applied.
-- iOS: notification permission prompt appears; rolling window tops up past the 64-pending
-  cap.
-- `flutter test` passes: recurrence expansion, rollover rule, series split.
+- A one-off task with a near-term reminder fires on time, and the Done and Snooze-picker
+  actions work directly from the notification.
+- A daily recurring task renders distinct occurrences across the Day and 3-day views;
+  occurrences complete independently; editing splits the series while leaving the past
+  unchanged; deletion honors the this/future/all choice.
+- An incomplete one-off task from yesterday appears on Today in red; a missed recurring
+  occurrence stays in the past.
+- Android: the exact-alarm permission prompt appears, and reminders survive on a physical
+  OEM device once the battery-optimization guidance has been applied.
+- iOS: the notification permission prompt appears, and the rolling window tops up correctly
+  past the 64-pending-notification cap.
+- `flutter test` passes unit tests covering recurrence expansion, the rollover rule, and
+  series splitting.
